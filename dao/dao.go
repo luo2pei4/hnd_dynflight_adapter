@@ -1,0 +1,31 @@
+package dao
+
+import (
+	"fmt"
+	cfgloader "hda/config"
+	"hda/db"
+)
+
+var conn *db.Connection
+
+func init() {
+
+	// 加载配置文件
+	cfgloader.LoadConfig("config.toml")
+	cfgs, err := cfgloader.GetTable("db")
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	driver := cfgs.Get("driver")
+	dsn := cfgs.Get("dsn")
+
+	conn, err = db.NewConnection("adsb", driver.(string), dsn.(string))
+
+	if err != nil {
+		fmt.Printf("Create adsb connection failed. Details:\n %s", err.Error())
+		return
+	}
+}
