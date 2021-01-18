@@ -2,12 +2,12 @@ package service
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"hda/dao"
 	"hda/dto"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 // CompanyInfo 航空公司信息
@@ -18,60 +18,93 @@ type CompanyInfo struct {
 	HomePage string `json:"url"`
 }
 
-// Items 航空公司列表
-type Items struct {
-	List []*CompanyInfo `json:"items"`
+// CompanyItems 航空公司列表
+type CompanyItems struct {
+	Items []*CompanyInfo `json:"items"`
 }
 
 // CompanyList 各种语言的航空公司列表
 type CompanyList struct {
-	JP     *Items `json:"ja"`
-	EN     *Items `json:"en"`
-	KO     *Items `json:"ko"`
-	ZhHans *Items `json:"zh-Hans"`
-	ZhHant *Items `json:"zh-Hant"`
+	JP     *CompanyItems `json:"ja"`
+	EN     *CompanyItems `json:"en"`
+	KO     *CompanyItems `json:"ko"`
+	ZhHans *CompanyItems `json:"zh-Hans"`
+	ZhHant *CompanyItems `json:"zh-Hant"`
 }
 
-// CrawlCompany 获取航空公司信息
-func CrawlCompany() error {
+var companyMap map[string]*dto.CompanyDto
 
-	domCompanyList, err := crawl("https://tokyo-haneda.com/site_resource/flight/data/dms/company_list_search.json")
+// LoadCompanies 加载航空公司信息
+func LoadCompanies() error {
+
+	cMap, err := dao.QueryCompanies()
+
 	if err != nil {
 		return err
 	}
 
-	cMap := make(map[string]*dto.CompanyDto)
-	edit(cMap, domCompanyList)
+	companyMap = cMap
 
-	intCompanyList, err := crawl("https://tokyo-haneda.com/site_resource/flight/data/int/company_list_search.json")
-	if err != nil {
-		return err
-	}
-
-	edit(cMap, intCompanyList)
-
-	failedCounter := 0
-
-	for _, company := range cMap {
-
-		_, _, err := dao.SaveCampany(company)
-		if err != nil {
-			failedCounter++
-			fmt.Println(err.Error())
-			continue
-		}
-	}
-
-	if failedCounter == 1 {
-		return errors.New("There is an company data insert failed")
-	} else if failedCounter > 1 {
-		return fmt.Errorf("There are %v company data insert failed", failedCounter)
-	}
+	fmt.Println("Load Company info success.")
 
 	return nil
 }
 
-func crawl(url string) (companyList *CompanyList, err error) {
+// CrawlCompany 获取航空公司信息
+func CrawlCompany() {
+
+	timer := time.Tick(600 * 1e9)
+
+	for {
+		select {
+		case <-timer:
+
+			domCompanyList, err := getCompanyList("https://tokyo-haneda.com/site_resource/flight/data/dms/company_list_search.json")
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+
+			cMap := make(map[string]*dto.CompanyDto)
+
+			if domCompanyList != nil {
+				editCompanies(cMap, domCompanyList)
+			}
+
+			intCompanyList, err := getCompanyList("https://tokyo-haneda.com/site_resource/flight/data/int/company_list_search.json")
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+
+			if intCompanyList != nil {
+				editCompanies(cMap, intCompanyList)
+			}
+
+			failedCounter := 0
+
+			for _, company := range cMap {
+
+				if companyMap[company.IcaoCd] == nil {
+
+					_, _, err := dao.SaveCampany(company)
+
+					if err != nil {
+						failedCounter++
+						fmt.Println(err.Error())
+						continue
+					}
+				}
+			}
+
+			if failedCounter == 1 {
+				fmt.Println("There is an company data insert failed")
+			} else if failedCounter > 1 {
+				fmt.Printf("There are %v company data insert failed", failedCounter)
+			}
+		}
+	}
+}
+
+func getCompanyList(url string) (companyList *CompanyList, err error) {
 
 	response, err := http.Get(url)
 
@@ -97,11 +130,11 @@ func crawl(url string) (companyList *CompanyList, err error) {
 	return
 }
 
-func edit(cMap map[string]*dto.CompanyDto, companyList *CompanyList) {
+func editCompanies(cMap map[string]*dto.CompanyDto, companyList *CompanyList) {
 
-	list := companyList.JP.List
+	items := companyList.JP.Items
 
-	for _, info := range list {
+	for _, info := range items {
 
 		if cMap[info.IcaoCode] == nil {
 			cMap[info.IcaoCode] = &dto.CompanyDto{
@@ -115,9 +148,9 @@ func edit(cMap map[string]*dto.CompanyDto, companyList *CompanyList) {
 		}
 	}
 
-	list = companyList.EN.List
+	items = companyList.EN.Items
 
-	for _, info := range list {
+	for _, info := range items {
 
 		if cMap[info.IcaoCode] == nil {
 			cMap[info.IcaoCode] = &dto.CompanyDto{
@@ -131,9 +164,9 @@ func edit(cMap map[string]*dto.CompanyDto, companyList *CompanyList) {
 		}
 	}
 
-	list = companyList.KO.List
+	items = companyList.KO.Items
 
-	for _, info := range list {
+	for _, info := range items {
 
 		if cMap[info.IcaoCode] == nil {
 			cMap[info.IcaoCode] = &dto.CompanyDto{
@@ -147,9 +180,9 @@ func edit(cMap map[string]*dto.CompanyDto, companyList *CompanyList) {
 		}
 	}
 
-	list = companyList.ZhHans.List
+	items = companyList.ZhHans.Items
 
-	for _, info := range list {
+	for _, info := range items {
 
 		if cMap[info.IcaoCode] == nil {
 			cMap[info.IcaoCode] = &dto.CompanyDto{
@@ -163,9 +196,9 @@ func edit(cMap map[string]*dto.CompanyDto, companyList *CompanyList) {
 		}
 	}
 
-	list = companyList.ZhHant.List
+	items = companyList.ZhHant.Items
 
-	for _, info := range list {
+	for _, info := range items {
 
 		if cMap[info.IcaoCode] == nil {
 			cMap[info.IcaoCode] = &dto.CompanyDto{
