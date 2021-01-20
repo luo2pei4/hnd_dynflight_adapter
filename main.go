@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"hda/service"
 	"os"
-	"time"
 )
 
 func init() {
+
 	err := service.LoadAirports()
 
 	if err != nil {
@@ -25,15 +25,19 @@ func init() {
 
 func main() {
 
-	go service.CrawlCompany()
-	go service.CrawlAirports()
+	// go service.CrawlCompany()
+	// go service.CrawlAirports()
 
-	timer := time.Tick(60 * 1e9)
+	// timer := time.Tick(60 * 1e9)
 
-	for {
-		select {
-		case <-timer:
-			fmt.Println("crawl dynamic flight info.")
-		}
-	}
+	// for {
+	// 	select {
+	// 	case <-timer:
+	// 		fmt.Println("crawl dynamic flight info.")
+	// 	}
+	// }
+	service.CrawlHndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfarv.json")
+	service.CrawlHndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfdep.json")
+	service.CrawlHndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/int/hdacfarv.json")
+	service.CrawlHndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/int/hdacfdep.json")
 }

@@ -1,5 +1,16 @@
 package service
 
+import (
+	"encoding/json"
+	"fmt"
+	"hda/dao"
+	"hda/dto"
+	"io/ioutil"
+	"net/http"
+	"strings"
+	"time"
+)
+
 // Carrier 承运人
 type Carrier struct {
 	AirlineCD     string `json:"ＡＬコード"`
@@ -40,7 +51,7 @@ type FlightInfo struct {
 	ViaDirectionENName  string        `json:"経由地方面英名称"`
 	ScheduleTime        string        `json:"定刻"`
 	Status              string        `json:"状況"`
-	ActualTile          string        `json:"変更時刻"`
+	ActualTime          string        `json:"変更時刻"`
 	TerminalFlag        string        `json:"ターミナル区分"`
 	SwingFlag           string        `json:"ウイング区分"`
 	RemarkJPName        string        `json:"備考和名称"`
@@ -62,4 +73,98 @@ type FlightList struct {
 	LastUpdateTime string        `json:"last_upd"`
 	List           []*FlightInfo `json:"flight_info"`
 	FlightEnd      bool          `json:"flight_end"`
+}
+
+// CrawlHndDynFlight 抓取羽田机场航班动态
+func CrawlHndDynFlight(url string) {
+
+	flightList, err := getHndDynFlightList(url)
+
+	if err != nil {
+		fmt.Println("Error: ", err.Error())
+	}
+
+	list := flightList.List
+
+	dto := &dto.HndDynFlightDto{}
+
+	for _, info := range list {
+
+		for _, carrier := range info.Carriers {
+			dto.AirlineCD = carrier.AirlineCD
+			dto.FlightNo = carrier.FlightNo
+			dto.OrgnAirportCD = info.OrgnAirportCD
+			dto.OrgnDirectionCD = info.OrgnDirectionCD
+			dto.OrgnDirectionJPName = info.OrgnDirectionJPName
+			dto.OrgnDirectionENName = info.OrgnDirectionENName
+			dto.DestAirportCD = info.DestAirportCD
+			dto.DestDirectionCD = info.DestDirectionCD
+			dto.DestDirectionJPName = info.DestDirectionJPName
+			dto.DestDirectionENName = info.DestDirectionENName
+			dto.ViaAirportCD = info.ViaAirportCD
+			dto.ViaDirectionCD = info.ViaDirectionCD
+			dto.ViaDirectionJPName = info.ViaDirectionJPName
+			dto.ViaDirectionENName = info.ViaDirectionENName
+			dto.ScheduleTime = info.ScheduleTime
+			dto.ActualTime = info.ActualTime
+			dto.Status = info.Status
+			dto.Terminal = info.TerminalFlag
+			dto.Swing = info.SwingFlag
+			dto.RemarkJPName = info.RemarkJPName
+			dto.RemarkENName = info.RemarkENName
+			dto.RemarkJP = info.Remark.RemarkJP
+			dto.RemarkEN = info.Remark.RemarkEN
+			dto.RemarkKO = info.Remark.RemarkKO
+			dto.RemarkHans = info.Remark.RemarkHans
+			dto.RemarkHant = info.Remark.RemarkHant
+			dto.Fliker = info.Fliker
+			dto.GateCD = info.GateCD
+			dto.RemarkCD = info.RemarkCD
+			dto.CheckinCounter = info.CheckinCounter
+			dto.SpotNo = info.SpotNo
+			dto.CraftType = info.CraftType
+			dto.OperatingStatus = info.OperatingStatus
+			dto.Createtime = getCurrentTime()
+			_, _, err := dao.SaveHndDynFlight(dto)
+
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+		}
+	}
+}
+
+func getHndDynFlightList(url string) (flightList *FlightList, err error) {
+
+	response, err := http.Get(url)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if response.Body != nil {
+
+		body, _ := ioutil.ReadAll(response.Body)
+
+		if body != nil {
+
+			flightList = &FlightList{}
+			err := json.Unmarshal(body, flightList)
+
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return
+}
+
+func getCurrentTime() string {
+
+	now := time.Now().Local().Format(time.RFC3339)
+	currentTime := now[:19]
+	currentTime = strings.ReplaceAll(currentTime, "T", " ")
+
+	return currentTime
 }
