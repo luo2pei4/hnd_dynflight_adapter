@@ -10,6 +10,8 @@ var conn *db.Connection
 
 func init() {
 
+	fmt.Println("Load config file.")
+
 	// 加载配置文件
 	cfgloader.LoadConfig("config.toml")
 	cfgs, err := cfgloader.GetTable("db")

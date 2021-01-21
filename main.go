@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"hda/service"
 	"os"
@@ -25,19 +26,17 @@ func init() {
 
 func main() {
 
-	// go service.CrawlCompany()
-	// go service.CrawlAirports()
+	go service.CrawlCompany()
+	go service.CrawlAirports()
 
-	// timer := time.Tick(60 * 1e9)
+	ctx, cancel := context.WithCancel(context.Background())
+	go service.CrawlHndDynFlight(cancel)
 
-	// for {
-	// 	select {
-	// 	case <-timer:
-	// 		fmt.Println("crawl dynamic flight info.")
-	// 	}
-	// }
-	service.CrawlHndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfarv.json")
-	service.CrawlHndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfdep.json")
-	service.CrawlHndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/int/hdacfarv.json")
-	service.CrawlHndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/int/hdacfdep.json")
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("System error, quit...")
+			return
+		}
+	}
 }

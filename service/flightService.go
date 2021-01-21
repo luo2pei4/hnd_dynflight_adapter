@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"hda/dao"
@@ -75,14 +76,53 @@ type FlightList struct {
 	FlightEnd      bool          `json:"flight_end"`
 }
 
+type contextKey string
+
+// CrawlHndDynFlight 爬取羽田机场航班动态
+func CrawlHndDynFlight(cancel context.CancelFunc) {
+
+	defer func() {
+
+		if e := recover(); e != nil {
+			fmt.Printf("Panicing %s\r\n", e)
+			cancel()
+		}
+	}()
+
+	timer := time.Tick(60 * 1e9)
+	dmsArvLastUpdateTime := ""
+	dmsDepLastUpdateTime := ""
+	intArvLastUpdateTime := ""
+	intDepLastUpdateTime := ""
+
+	for {
+		select {
+		case <-timer:
+			go hndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfarv.json", "Dms_Arv_LastUpdateTime", &dmsArvLastUpdateTime)
+			go hndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfdep.json", "Dms_Dep_LastUpdateTime", &dmsDepLastUpdateTime)
+			go hndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/int/hdacfarv.json", "Int_Arv_LastUpdateTime", &intArvLastUpdateTime)
+			go hndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/int/hdacfdep.json", "Int_Dep_LastUpdateTime", &intDepLastUpdateTime)
+		}
+	}
+}
+
 // CrawlHndDynFlight 抓取羽田机场航班动态
-func CrawlHndDynFlight(url string) {
+func hndDynFlight(url, desc string, lastUpdateTime *string) {
 
 	flightList, err := getHndDynFlightList(url)
 
 	if err != nil {
 		fmt.Println("Error: ", err.Error())
 	}
+
+	if *lastUpdateTime == flightList.LastUpdateTime {
+		return
+	}
+
+	fmt.Printf("%v before: %v, now: %v\n", desc, *lastUpdateTime, flightList.LastUpdateTime)
+
+	// 保存最后更新时间
+	*lastUpdateTime = flightList.LastUpdateTime
 
 	list := flightList.List
 
