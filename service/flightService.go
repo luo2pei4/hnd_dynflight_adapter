@@ -113,6 +113,7 @@ func hndDynFlight(url, desc string, lastUpdateTime *string) {
 
 	if err != nil {
 		fmt.Println("Error: ", err.Error())
+		return
 	}
 
 	if *lastUpdateTime == flightList.LastUpdateTime {
