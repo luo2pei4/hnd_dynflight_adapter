@@ -6,8 +6,6 @@ import (
 	"hda/db"
 )
 
-var conn *db.Connection
-
 func init() {
 
 	fmt.Println("Load config file.")
@@ -24,7 +22,7 @@ func init() {
 	driver := cfgs.Get("driver")
 	dsn := cfgs.Get("dsn")
 
-	conn, err = db.NewConnection("adsb", driver.(string), dsn.(string))
+	err = db.NewConnection("adsb", driver.(string), dsn.(string))
 
 	if err != nil {
 		fmt.Printf("Create adsb connection failed. Details:\n %s", err.Error())

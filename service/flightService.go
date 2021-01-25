@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"hda/dao"
 	"hda/dto"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -76,7 +78,28 @@ type FlightList struct {
 	FlightEnd      bool          `json:"flight_end"`
 }
 
-type contextKey string
+type statInfo struct {
+	url            string
+	arvDep         string
+	lastUpdateTime string
+	flightMap      map[string]string
+}
+
+var flightMap map[string]string
+
+// hashValue 航班信息的哈希值
+func (f *FlightInfo) hashValue() string {
+
+	h := sha1.New()
+	b, err := json.Marshal(*f)
+	if err != nil {
+		return ""
+	}
+
+	io.WriteString(h, string(b))
+
+	return string(h.Sum(nil))
+}
 
 // CrawlHndDynFlight 爬取羽田机场航班动态
 func CrawlHndDynFlight(cancel context.CancelFunc) {
@@ -90,97 +113,166 @@ func CrawlHndDynFlight(cancel context.CancelFunc) {
 	}()
 
 	timer := time.Tick(60 * 1e9)
-	dmsArvLastUpdateTime := ""
-	dmsDepLastUpdateTime := ""
-	intArvLastUpdateTime := ""
-	intDepLastUpdateTime := ""
+	// dmsArvStat := &statInfo{
+	// 	url:            "https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfarv.json",
+	// 	arvDep:         "ARV",
+	// 	lastUpdateTime: "",
+	// 	flightMap:      make(map[string]string, 1000),
+	// }
+	// dmsDepStat := &statInfo{
+	// 	url:            "https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfdep.json",
+	// 	arvDep:         "DEP",
+	// 	lastUpdateTime: "",
+	// 	flightMap:      make(map[string]string, 1000),
+	// }
+	intArvStat := &statInfo{
+		url:            "https://tokyo-haneda.com/app_resource/flight/data/int/hdacfarv.json",
+		arvDep:         "ARV",
+		lastUpdateTime: "",
+		flightMap:      make(map[string]string, 1000),
+	}
+	intDepStat := &statInfo{
+		url:            "https://tokyo-haneda.com/app_resource/flight/data/int/hdacfdep.json",
+		arvDep:         "DEP",
+		lastUpdateTime: "",
+		flightMap:      make(map[string]string, 1000),
+	}
 
 	for {
 		select {
 		case <-timer:
-			go hndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfarv.json", "Dms_Arv_LastUpdateTime", &dmsArvLastUpdateTime)
-			go hndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfdep.json", "Dms_Dep_LastUpdateTime", &dmsDepLastUpdateTime)
-			go hndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/int/hdacfarv.json", "Int_Arv_LastUpdateTime", &intArvLastUpdateTime)
-			go hndDynFlight("https://tokyo-haneda.com/app_resource/flight/data/int/hdacfdep.json", "Int_Dep_LastUpdateTime", &intDepLastUpdateTime)
+			// hndDynFlight(dmsArvStat)
+			// hndDynFlight(dmsDepStat)
+			hndDynFlight(intArvStat)
+			hndDynFlight(intDepStat)
 		}
 	}
 }
 
 // CrawlHndDynFlight 抓取羽田机场航班动态
-func hndDynFlight(url, desc string, lastUpdateTime *string) {
+func hndDynFlight(s *statInfo) {
 
-	flightList, err := getHndDynFlightList(url)
+	flightList, _, err := getHndDynFlightList(s.url)
 
 	if err != nil {
 		fmt.Println("Error: ", err.Error())
 		return
 	}
 
-	if *lastUpdateTime == flightList.LastUpdateTime {
+	if s.lastUpdateTime == flightList.LastUpdateTime {
 		return
 	}
 
-	fmt.Printf("%v before: %v, now: %v\n", desc, *lastUpdateTime, flightList.LastUpdateTime)
+	fmt.Printf("%v before: %v, now: %v\n", s.url, s.lastUpdateTime, flightList.LastUpdateTime)
 
 	// 保存最后更新时间
-	*lastUpdateTime = flightList.LastUpdateTime
+	s.lastUpdateTime = flightList.LastUpdateTime
 
 	list := flightList.List
 
-	dto := &dto.HndDynFlightDto{}
+	dynFlightDto := &dto.HndDynFlightDto{}
 
 	for _, info := range list {
 
-		for _, carrier := range info.Carriers {
-			dto.AirlineCD = carrier.AirlineCD
-			dto.FlightNo = carrier.FlightNo
-			dto.OrgnAirportCD = info.OrgnAirportCD
-			dto.OrgnDirectionCD = info.OrgnDirectionCD
-			dto.OrgnDirectionJPName = info.OrgnDirectionJPName
-			dto.OrgnDirectionENName = info.OrgnDirectionENName
-			dto.DestAirportCD = info.DestAirportCD
-			dto.DestDirectionCD = info.DestDirectionCD
-			dto.DestDirectionJPName = info.DestDirectionJPName
-			dto.DestDirectionENName = info.DestDirectionENName
-			dto.ViaAirportCD = info.ViaAirportCD
-			dto.ViaDirectionCD = info.ViaDirectionCD
-			dto.ViaDirectionJPName = info.ViaDirectionJPName
-			dto.ViaDirectionENName = info.ViaDirectionENName
-			dto.ScheduleTime = info.ScheduleTime
-			dto.ActualTime = info.ActualTime
-			dto.Status = info.Status
-			dto.Terminal = info.TerminalFlag
-			dto.Swing = info.SwingFlag
-			dto.RemarkJPName = info.RemarkJPName
-			dto.RemarkENName = info.RemarkENName
-			dto.RemarkJP = info.Remark.RemarkJP
-			dto.RemarkEN = info.Remark.RemarkEN
-			dto.RemarkKO = info.Remark.RemarkKO
-			dto.RemarkHans = info.Remark.RemarkHans
-			dto.RemarkHant = info.Remark.RemarkHant
-			dto.Fliker = info.Fliker
-			dto.GateCD = info.GateCD
-			dto.RemarkCD = info.RemarkCD
-			dto.CheckinCounter = info.CheckinCounter
-			dto.SpotNo = info.SpotNo
-			dto.CraftType = info.CraftType
-			dto.OperatingStatus = info.OperatingStatus
-			dto.Createtime = getCurrentTime()
-			_, _, err := dao.SaveHndDynFlight(dto)
+		airlineCD := info.Carriers[0].AirlineCD
+		flightNo := info.Carriers[0].FlightNo
+		scheduleTime := info.ScheduleTime
+		scheduleTime = strings.ReplaceAll(scheduleTime, "/", "")
+		scheduleTime = strings.ReplaceAll(scheduleTime, " ", "")
+		scheduleTime = strings.ReplaceAll(scheduleTime, ":", "")
+		fuid := airlineCD + flightNo + "-" + scheduleTime + "-" + s.arvDep
+		sha1Value := info.hashValue()
 
-			if err != nil {
-				fmt.Println(err.Error())
+		if flightMap[fuid] == sha1Value {
+			continue
+		}
+
+		var adminFlightID int64
+
+		for idx, carrier := range info.Carriers {
+
+			// administrating flight
+			if idx == 0 {
+				dynFlightDto.AirlineCD = carrier.AirlineCD
+				dynFlightDto.FlightNo = carrier.FlightNo
+				dynFlightDto.OrgnAirportCD = info.OrgnAirportCD
+				dynFlightDto.OrgnDirectionCD = info.OrgnDirectionCD
+				dynFlightDto.OrgnDirectionJPName = info.OrgnDirectionJPName
+				dynFlightDto.OrgnDirectionENName = info.OrgnDirectionENName
+				dynFlightDto.DestAirportCD = info.DestAirportCD
+				dynFlightDto.DestDirectionCD = info.DestDirectionCD
+				dynFlightDto.DestDirectionJPName = info.DestDirectionJPName
+				dynFlightDto.DestDirectionENName = info.DestDirectionENName
+				dynFlightDto.ViaAirportCD = info.ViaAirportCD
+				dynFlightDto.ViaDirectionCD = info.ViaDirectionCD
+				dynFlightDto.ViaDirectionJPName = info.ViaDirectionJPName
+				dynFlightDto.ViaDirectionENName = info.ViaDirectionENName
+				dynFlightDto.ScheduleTime = info.ScheduleTime
+				dynFlightDto.ActualTime = info.ActualTime
+				dynFlightDto.Status = info.Status
+				dynFlightDto.Terminal = info.TerminalFlag
+				dynFlightDto.Swing = info.SwingFlag
+				dynFlightDto.RemarkJPName = info.RemarkJPName
+				dynFlightDto.RemarkENName = info.RemarkENName
+				dynFlightDto.RemarkJP = info.Remark.RemarkJP
+				dynFlightDto.RemarkEN = info.Remark.RemarkEN
+				dynFlightDto.RemarkKO = info.Remark.RemarkKO
+				dynFlightDto.RemarkHans = info.Remark.RemarkHans
+				dynFlightDto.RemarkHant = info.Remark.RemarkHant
+				dynFlightDto.Fliker = info.Fliker
+				dynFlightDto.GateCD = info.GateCD
+				dynFlightDto.RemarkCD = info.RemarkCD
+				dynFlightDto.CheckinCounter = info.CheckinCounter
+				dynFlightDto.SpotNo = info.SpotNo
+				dynFlightDto.CraftType = info.CraftType
+				dynFlightDto.OperatingStatus = info.OperatingStatus
+				dynFlightDto.Createtime = getCurrentTime()
+				lastInsertID, _, err := dao.SaveHndDynFlight(dynFlightDto)
+
+				if err != nil {
+					fmt.Println("Save flight error:", err.Error())
+					continue
+				}
+
+				_, err = dao.DeleteShareCode(lastInsertID)
+				adminFlightID = lastInsertID
+
+			} else {
+
+				shareCodeInfo := &dto.HndShareCodeDto{
+					AdminFlightID: adminFlightID,
+					AirlineCD:     carrier.AirlineCD,
+					FlightNo:      carrier.FlightNo,
+				}
+				_, _, err = dao.SaveShareCode(shareCodeInfo)
+
+				if err != nil {
+					fmt.Println("Save sharecode error:", err.Error())
+					continue
+				}
 			}
 		}
+
+		flightMap[fuid] = sha1Value
 	}
+
+	fmt.Printf("%v , flightMap len: %v\n", s.url, len(flightMap))
 }
 
-func getHndDynFlightList(url string) (flightList *FlightList, err error) {
+func getHndDynFlightList(url string) (flightList *FlightList, msg string, err error) {
 
-	response, err := http.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
 
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+
+	// 设置连接关闭标志
+	req.Close = true
+	response, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		return nil, "", err
 	}
 
 	if response.Body != nil {
@@ -189,11 +281,12 @@ func getHndDynFlightList(url string) (flightList *FlightList, err error) {
 
 		if body != nil {
 
+			msg = string(body)
 			flightList = &FlightList{}
 			err := json.Unmarshal(body, flightList)
 
 			if err != nil {
-				return nil, err
+				return nil, msg, err
 			}
 		}
 	}

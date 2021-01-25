@@ -2,6 +2,7 @@ package dao
 
 import (
 	"fmt"
+	"hda/db"
 	"hda/dto"
 )
 
@@ -72,9 +73,48 @@ func SaveHndDynFlight(hndDynFlightDto *dto.HndDynFlightDto) (lastInsertID, rowsA
 		hndDynFlightDto.Createtime,
 	)
 
-	// fmt.Println(sql)
+	lastInsertID, rowsAffected, err = db.Execute(sql)
 
-	lastInsertID, rowsAffected, err = conn.Insert(sql)
+	return
+}
+
+// SaveShareCode save sharecode flight info
+func SaveShareCode(shareCode *dto.HndShareCodeDto) (lastInsertID, rowsAffected int64, err error) {
+
+	sql := `INSERT INTO adsb.hnd_flight_sharecode (adminflightid, airlinecd, flightno) VALUES (%v, '%v', '%v')`
+	sql = fmt.Sprintf(sql, shareCode.AdminFlightID, shareCode.AirlineCD, shareCode.FlightNo)
+	lastInsertID, rowsAffected, err = db.Execute(sql)
+
+	return
+}
+
+// DeleteShareCode delete sharecode info
+func DeleteShareCode(adminFlightID int64) (rowsAffected int64, err error) {
+
+	sql := `SELECT count(1) as counter FROM adsb.hnd_flight_sharecode where adminflightid = %v`
+	sql = fmt.Sprintf(sql, adminFlightID)
+	rows, err := db.Select(sql)
+
+	if err != nil {
+		return 0, err
+	}
+
+	counter := 0
+	rows.Next()
+	rows.Scan(&counter)
+	rows.Close()
+
+	if counter == 0 {
+		return 0, nil
+	}
+
+	sql = `DELETE FROM adsb.hnd_flight_sharecode WHERE adminflightid = %v`
+	sql = fmt.Sprintf(sql, adminFlightID)
+	_, rowsAffected, err = db.Execute(sql)
+
+	if err != nil {
+		return 0, err
+	}
 
 	return
 }

@@ -2,6 +2,7 @@ package dao
 
 import (
 	"fmt"
+	"hda/db"
 	"hda/dto"
 )
 
@@ -10,7 +11,7 @@ func SaveAirport(dto *dto.AirportDto) (lastInsertID, rowsAffected int64, err err
 
 	sql := `INSERT INTO M_Airport(name_en, name_ja, name_ko, name_hans, name_hant, icaocd, iatacd, gmt, region) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')`
 	sql = fmt.Sprintf(sql, dto.NameEn, dto.NameJa, dto.NameKo, dto.NameHans, dto.NameHant, dto.IcaoCd, dto.IataCd, dto.Gmt, dto.Region)
-	lastInsertID, rowsAffected, err = conn.Insert(sql)
+	lastInsertID, rowsAffected, err = db.Execute(sql)
 
 	return
 }
@@ -19,7 +20,7 @@ func SaveAirport(dto *dto.AirportDto) (lastInsertID, rowsAffected int64, err err
 func QueryAirports() (airportMap map[string]*dto.AirportDto, err error) {
 
 	sql := `SELECT name_en, name_ja, name_ko, name_hans, name_hant, icaocd, iatacd, gmt, region	FROM adsb.M_Airport`
-	rows, err := conn.Select(sql)
+	rows, err := db.Select(sql)
 
 	if err != nil {
 		return nil, err

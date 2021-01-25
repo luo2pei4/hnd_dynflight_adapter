@@ -38,3 +38,11 @@ type HndDynFlightDto struct {
 	OperatingStatus     string
 	Createtime          string
 }
+
+// HndShareCodeDto sharecode flight info
+type HndShareCodeDto struct {
+	ID            int
+	AdminFlightID int64
+	AirlineCD     string
+	FlightNo      string
+}
