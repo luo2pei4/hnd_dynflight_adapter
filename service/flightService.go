@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -82,10 +83,9 @@ type statInfo struct {
 	url            string
 	arvDep         string
 	lastUpdateTime string
-	flightMap      map[string]string
 }
 
-var flightMap map[string]string
+var flightMap map[string][]string
 
 // hashValue 航班信息的哈希值
 func (f *FlightInfo) hashValue() string {
@@ -113,38 +113,36 @@ func CrawlHndDynFlight(cancel context.CancelFunc) {
 	}()
 
 	timer := time.Tick(60 * 1e9)
-	// dmsArvStat := &statInfo{
-	// 	url:            "https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfarv.json",
-	// 	arvDep:         "ARV",
-	// 	lastUpdateTime: "",
-	// 	flightMap:      make(map[string]string, 1000),
-	// }
-	// dmsDepStat := &statInfo{
-	// 	url:            "https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfdep.json",
-	// 	arvDep:         "DEP",
-	// 	lastUpdateTime: "",
-	// 	flightMap:      make(map[string]string, 1000),
-	// }
+	flightMap = make(map[string][]string, 4000)
+	dmsArvStat := &statInfo{
+		url:            "https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfarv.json",
+		arvDep:         "ARV",
+		lastUpdateTime: "",
+	}
+	dmsDepStat := &statInfo{
+		url:            "https://tokyo-haneda.com/app_resource/flight/data/dms/hdacfdep.json",
+		arvDep:         "DEP",
+		lastUpdateTime: "",
+	}
 	intArvStat := &statInfo{
 		url:            "https://tokyo-haneda.com/app_resource/flight/data/int/hdacfarv.json",
 		arvDep:         "ARV",
 		lastUpdateTime: "",
-		flightMap:      make(map[string]string, 1000),
 	}
 	intDepStat := &statInfo{
 		url:            "https://tokyo-haneda.com/app_resource/flight/data/int/hdacfdep.json",
 		arvDep:         "DEP",
 		lastUpdateTime: "",
-		flightMap:      make(map[string]string, 1000),
 	}
 
 	for {
 		select {
 		case <-timer:
-			// hndDynFlight(dmsArvStat)
-			// hndDynFlight(dmsDepStat)
+			hndDynFlight(dmsArvStat)
+			hndDynFlight(dmsDepStat)
 			hndDynFlight(intArvStat)
 			hndDynFlight(intDepStat)
+			cleanFlightMap()
 		}
 	}
 }
@@ -152,7 +150,10 @@ func CrawlHndDynFlight(cancel context.CancelFunc) {
 // CrawlHndDynFlight 抓取羽田机场航班动态
 func hndDynFlight(s *statInfo) {
 
-	flightList, _, err := getHndDynFlightList(s.url)
+	beginTime := time.Now().UnixNano()
+	fmt.Printf("%v\nbegin, %v\n", s.url, beginTime)
+
+	flightList, _, err := getHndFlightList(s.url)
 
 	if err != nil {
 		fmt.Println("Error: ", err.Error())
@@ -160,17 +161,16 @@ func hndDynFlight(s *statInfo) {
 	}
 
 	if s.lastUpdateTime == flightList.LastUpdateTime {
+		fmt.Printf("end.., %v\n", time.Now().UnixNano())
 		return
 	}
 
-	fmt.Printf("%v before: %v, now: %v\n", s.url, s.lastUpdateTime, flightList.LastUpdateTime)
-
 	// 保存最后更新时间
 	s.lastUpdateTime = flightList.LastUpdateTime
-
 	list := flightList.List
 
-	dynFlightDto := &dto.HndDynFlightDto{}
+	// dynFlightDto := &dto.HndDynFlightDto{}
+	hndFlightDto := &dto.HndFlightDto{}
 
 	for _, info := range list {
 
@@ -183,8 +183,12 @@ func hndDynFlight(s *statInfo) {
 		fuid := airlineCD + flightNo + "-" + scheduleTime + "-" + s.arvDep
 		sha1Value := info.hashValue()
 
-		if flightMap[fuid] == sha1Value {
-			continue
+		if flightMap[fuid] == nil || len(flightMap[fuid]) == 0 {
+			flightMap[fuid] = make([]string, 3)
+		} else {
+			if flightMap[fuid][0] == sha1Value {
+				continue
+			}
 		}
 
 		var adminFlightID int64
@@ -193,49 +197,68 @@ func hndDynFlight(s *statInfo) {
 
 			// administrating flight
 			if idx == 0 {
-				dynFlightDto.AirlineCD = carrier.AirlineCD
-				dynFlightDto.FlightNo = carrier.FlightNo
-				dynFlightDto.OrgnAirportCD = info.OrgnAirportCD
-				dynFlightDto.OrgnDirectionCD = info.OrgnDirectionCD
-				dynFlightDto.OrgnDirectionJPName = info.OrgnDirectionJPName
-				dynFlightDto.OrgnDirectionENName = info.OrgnDirectionENName
-				dynFlightDto.DestAirportCD = info.DestAirportCD
-				dynFlightDto.DestDirectionCD = info.DestDirectionCD
-				dynFlightDto.DestDirectionJPName = info.DestDirectionJPName
-				dynFlightDto.DestDirectionENName = info.DestDirectionENName
-				dynFlightDto.ViaAirportCD = info.ViaAirportCD
-				dynFlightDto.ViaDirectionCD = info.ViaDirectionCD
-				dynFlightDto.ViaDirectionJPName = info.ViaDirectionJPName
-				dynFlightDto.ViaDirectionENName = info.ViaDirectionENName
-				dynFlightDto.ScheduleTime = info.ScheduleTime
-				dynFlightDto.ActualTime = info.ActualTime
-				dynFlightDto.Status = info.Status
-				dynFlightDto.Terminal = info.TerminalFlag
-				dynFlightDto.Swing = info.SwingFlag
-				dynFlightDto.RemarkJPName = info.RemarkJPName
-				dynFlightDto.RemarkENName = info.RemarkENName
-				dynFlightDto.RemarkJP = info.Remark.RemarkJP
-				dynFlightDto.RemarkEN = info.Remark.RemarkEN
-				dynFlightDto.RemarkKO = info.Remark.RemarkKO
-				dynFlightDto.RemarkHans = info.Remark.RemarkHans
-				dynFlightDto.RemarkHant = info.Remark.RemarkHant
-				dynFlightDto.Fliker = info.Fliker
-				dynFlightDto.GateCD = info.GateCD
-				dynFlightDto.RemarkCD = info.RemarkCD
-				dynFlightDto.CheckinCounter = info.CheckinCounter
-				dynFlightDto.SpotNo = info.SpotNo
-				dynFlightDto.CraftType = info.CraftType
-				dynFlightDto.OperatingStatus = info.OperatingStatus
-				dynFlightDto.Createtime = getCurrentTime()
-				lastInsertID, _, err := dao.SaveHndDynFlight(dynFlightDto)
 
-				if err != nil {
-					fmt.Println("Save flight error:", err.Error())
-					continue
+				hndFlightDto.CarrierCd = carrier.AirlineCD
+				hndFlightDto.FlightNo = carrier.FlightNo
+				hndFlightDto.CraftType = info.CraftType
+				hndFlightDto.OrgnAirportCd = info.OrgnAirportCD
+				hndFlightDto.DestAirportCd = info.DestAirportCD
+				hndFlightDto.ViaAirportCd = info.ViaAirportCD
+				hndFlightDto.ScheduleTime = info.ScheduleTime
+				flightMap[fuid][2] = info.ScheduleTime
+
+				hndFlightDto.ActualTime = info.ActualTime
+				hndFlightDto.Terminal = info.TerminalFlag
+				hndFlightDto.Swing = info.SwingFlag
+
+				remarkEn := info.Remark.RemarkEN
+				if strings.Contains(remarkEn, "EXIT") {
+					hndFlightDto.ExitCd = remarkEn[4:]
+				} else {
+					hndFlightDto.Status = remarkEn
 				}
 
-				_, err = dao.DeleteShareCode(lastInsertID)
-				adminFlightID = lastInsertID
+				hndFlightDto.GateCd = info.GateCD
+				hndFlightDto.CheckinCounter = info.CheckinCounter
+				hndFlightDto.SpotNo = info.SpotNo
+				hndFlightDto.CreateTime = getCurrentTime()
+
+				if flightMap[fuid][1] == "" {
+
+					lastInsertID, _, err := dao.SaveHndFlight(hndFlightDto)
+
+					if err != nil {
+						fmt.Println("Save flight error:", err.Error())
+						break
+					}
+
+					adminFlightID = lastInsertID
+					flightMap[fuid][1] = strconv.FormatInt(lastInsertID, 10)
+
+				} else {
+
+					id, e := strconv.Atoi(flightMap[fuid][1])
+
+					if e != nil {
+						fmt.Printf("FlightID: %v convert failed.\n", flightMap[fuid][1])
+						break
+					}
+
+					hndFlightDto.ID = id
+					_, err = dao.UpdateHndFlight(hndFlightDto)
+					fmt.Printf("%v is changed.\n", id)
+
+					if err != nil {
+						fmt.Println("Update flight error:", err.Error())
+						break
+					}
+				}
+
+				_, err = dao.DeleteShareCode(adminFlightID)
+				if err != nil {
+					fmt.Println("Delete sharecode error:", err.Error())
+					break
+				}
 
 			} else {
 
@@ -248,18 +271,22 @@ func hndDynFlight(s *statInfo) {
 
 				if err != nil {
 					fmt.Println("Save sharecode error:", err.Error())
-					continue
+					break
 				}
 			}
 		}
 
-		flightMap[fuid] = sha1Value
+		flightMap[fuid][0] = sha1Value
 	}
 
-	fmt.Printf("%v , flightMap len: %v\n", s.url, len(flightMap))
+	endTime := time.Now().UnixNano()
+	diff := endTime - beginTime
+	cost := float64(diff) / 1e6
+
+	fmt.Printf("end.., %v, cost:%v\n", endTime, cost)
 }
 
-func getHndDynFlightList(url string) (flightList *FlightList, msg string, err error) {
+func getHndFlightList(url string) (flightList *FlightList, msg string, err error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 
@@ -301,4 +328,36 @@ func getCurrentTime() string {
 	currentTime = strings.ReplaceAll(currentTime, "T", " ")
 
 	return currentTime
+}
+
+func cleanFlightMap() {
+
+	fmt.Printf("len of flightMap before clean is %v\n", len(flightMap))
+
+	temp := time.Now().Add(-48 * time.Hour)
+	keyList := make([]string, 0)
+
+	for key, s := range flightMap {
+
+		strTime := s[2]
+
+		scheduleTime, err := time.Parse("2006/01/02 15:04:05", strTime)
+		if err != nil {
+			fmt.Println("Schedule time parse error.", err.Error())
+			continue
+		}
+
+		if scheduleTime.Before(temp) {
+			keyList = append(keyList, key)
+		}
+	}
+
+	if len(keyList) > 0 {
+
+		for _, key := range keyList {
+			delete(flightMap, key)
+		}
+	}
+
+	fmt.Printf("len of flightMap after clean is %v\n", len(flightMap))
 }
