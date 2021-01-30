@@ -215,7 +215,6 @@ func hndDynFlight(s *statInfo) {
 	s.lastUpdateTime = flightList.LastUpdateTime
 	list := flightList.List
 
-	// dynFlightDto := &dto.HndDynFlightDto{}
 	hndFlightDto := &dto.HndFlightDto{}
 
 	for _, info := range list {
@@ -301,10 +300,10 @@ func hndDynFlight(s *statInfo) {
 
 				} else {
 
-					adminFlightID, e := strconv.ParseInt(flightMap[fuid][1], 10, 64)
+					adminFlightID, err = strconv.ParseInt(flightMap[fuid][1], 10, 64)
 
-					if e != nil {
-						fmt.Printf("FlightID: %v convert failed.\n", flightMap[fuid][1])
+					if err != nil {
+						fmt.Printf("AdminFlightID: %v parse failed.\n", flightMap[fuid][1])
 						break
 					}
 
