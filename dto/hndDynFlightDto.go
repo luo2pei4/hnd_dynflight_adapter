@@ -1,5 +1,11 @@
 package dto
 
+import (
+	"crypto/sha1"
+	"fmt"
+	"io"
+)
+
 // HndFlightDto 羽田航班信息
 type HndFlightDto struct {
 	ID             int64
@@ -19,6 +25,14 @@ type HndFlightDto struct {
 	ExitCD         string
 	SpotNo         string
 	CreateTime     string
+}
+
+// HashValue 计算航班信息对象的hash值
+func (f *HndFlightDto) HashValue() string {
+
+	h := sha1.New()
+	io.WriteString(h, fmt.Sprintf("%v", *f))
+	return fmt.Sprint(h.Sum(nil))
 }
 
 // HndShareCodeDto sharecode flight info
