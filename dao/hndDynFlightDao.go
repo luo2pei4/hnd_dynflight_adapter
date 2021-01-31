@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hda/db"
 	"hda/dto"
+	"time"
 )
 
 // SaveHndFlight 保存羽田机场航班
@@ -13,12 +14,12 @@ func SaveHndFlight(hndFlightDto *dto.HndFlightDto) (lastInsertID, rowsAffected i
 			carriercd, flightno, crafttype, 
 			orgnairportcd, destairportcd, viaairportcd, 
 			scheduletime, actualtime, 
-			terminal, swing, status, gatecd, checkincounter, exitcd, spotno, createtime
+			terminal, swing, status, gatecd, checkincounter, exitcd, spotno, createtime, lastupdtime
 		) VALUES (
 			'%s', '%s', '%s', 
 			'%s', '%s', '%s', 
 			%s, %s, 
-			'%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'
+			'%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'
 		)`
 
 	scheduleTime := hndFlightDto.ScheduleTime
@@ -41,7 +42,7 @@ func SaveHndFlight(hndFlightDto *dto.HndFlightDto) (lastInsertID, rowsAffected i
 		hndFlightDto.OrgnAirportCd, hndFlightDto.DestAirportCd, hndFlightDto.ViaAirportCd,
 		scheduleTime, actualTime,
 		hndFlightDto.Terminal, hndFlightDto.Swing, hndFlightDto.Status, hndFlightDto.GateCd, hndFlightDto.CheckinCounter, hndFlightDto.ExitCD, hndFlightDto.SpotNo,
-		hndFlightDto.CreateTime,
+		hndFlightDto.CreateTime, hndFlightDto.CreateTime,
 	)
 
 	lastInsertID, rowsAffected, err = db.Execute(sql)
@@ -94,7 +95,8 @@ func UpdateHndFlight(hndFlightDto *dto.HndFlightDto) (rowsAffected int64, err er
 				carriercd='%s', flightno='%s', crafttype='%s', 
 				orgnairportcd='%s', destairportcd='%s', viaairportcd='%s', 
 				scheduletime=%s, actualtime=%s, 
-				terminal='%s', swing='%s', status='%s', gatecd='%s', checkincounter='%s', exitcd='%s', spotno='%s' 
+				terminal='%s', swing='%s', status='%s', gatecd='%s', checkincounter='%s', exitcd='%s', spotno='%s', 
+				lastupdtime='%s'
 			WHERE 
 				id=%v`
 
@@ -113,11 +115,14 @@ func UpdateHndFlight(hndFlightDto *dto.HndFlightDto) (rowsAffected int64, err er
 		actualTime = "'" + actualTime + "'"
 	}
 
+	lastupdtime := time.Now().Format("2006-01-02 15:04:05")
+
 	sql = fmt.Sprintf(sql,
 		hndFlightDto.CarrierCD, hndFlightDto.FlightNo, hndFlightDto.CraftType,
 		hndFlightDto.OrgnAirportCd, hndFlightDto.DestAirportCd, hndFlightDto.ViaAirportCd,
 		scheduleTime, actualTime,
 		hndFlightDto.Terminal, hndFlightDto.Swing, hndFlightDto.Status, hndFlightDto.GateCd, hndFlightDto.CheckinCounter, hndFlightDto.ExitCD, hndFlightDto.SpotNo,
+		lastupdtime,
 		hndFlightDto.ID,
 	)
 
@@ -170,10 +175,11 @@ func SaveHndFlightChanges(adminFlightID int64) (lastInsertID, rowsAffected int64
 		adminflightid, carriercd, flightno, crafttype, orgnairportcd, destairportcd, viaairportcd, scheduletime, actualtime, terminal, swing, status, gatecd, checkincounter, exitcd, spotno, createtime
 	)
 	SELECT 
-		id as adminflightid, carriercd, flightno, crafttype, orgnairportcd, destairportcd, viaairportcd, scheduletime, actualtime, terminal, swing, status, gatecd, checkincounter, exitcd, spotno, createtime
+		id as adminflightid, carriercd, flightno, crafttype, orgnairportcd, destairportcd, viaairportcd, scheduletime, actualtime, terminal, swing, status, gatecd, checkincounter, exitcd, spotno, '%s' as createtime
 	FROM 
 		adsb.hnd_flight WHERE id = %v`
-	sql = fmt.Sprintf(sql, adminFlightID)
+	createtime := time.Now().Format("2006-01-02 15:04:05")
+	sql = fmt.Sprintf(sql, createtime, adminFlightID)
 
 	lastInsertID, rowsAffected, err = db.Execute(sql)
 
